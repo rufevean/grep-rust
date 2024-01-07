@@ -1,30 +1,68 @@
+use regex::Regex;
 use std::env;
 use std::fs;
-use regex::Regex; 
-
-
-
+use std::io;
+use std::fs::metadata;
+mod explicit_pattern;
+mod insensitive_explicit_pattern;
+mod insensitive_pattern;
+mod recursive_search;
+mod standard_search;
+mod usage;
 fn main() {
     let mut contents = String::new();
-    let args : Vec<String> = env::args().collect();
-    let filename = &args[1];
-    let input_pattern  = &args[2];
-    let mut explicit_pattern = "";
-    if args.len() == 4 {
-        explicit_pattern = &args[3];
+    let args: Vec<String> = env::args().collect();
+    if args.len() == 2 {
+        let input = &args[1];
+        if input == "-h" || input == "--help" {
+            usage::usage();
+        } else {
+            println!("Invalid Input");
+        }
+        //end the program
+        return;
     }
-    read_contents(&filename, &mut contents);
-    if explicit_pattern == "-e"{
-        grep_explicit(&mut contents,input_pattern);
-    }else{        
-        let gen_regex = format!(r"\w*{}\b",input_pattern);
-        let pattern = Regex::new(&gen_regex).unwrap();
-        grep(&mut contents,pattern);
+    let path = &args[2];
+    let input_pattern = &args[3];
+    let pattern_type: &str = &args[1];
+    verify_path(path);
+    println!("Path : {}", path);
+    let file_names = get_files_in_directory(path).unwrap();
+    for file in file_names{
+        read_contents(&file, &mut contents);
     }
 
+    // matching the arugements with respective functions
+    /*
+        -s : Standard search
+        -e : Explicit Pattern
+        -i : Case Insensitive
+        -ie : Explicit and Case Insensitive
+    */
+    match pattern_type {
+        "-e" => {
+            explicit_pattern::grep_explicit(&mut contents, input_pattern);
+        }
+        "-i" => {
+            insensitive_pattern::grep_insensitive(&mut contents, input_pattern);
+        }
+        "-ie" => {
+            insensitive_explicit_pattern::grep_explicit_insensitive(&mut contents, input_pattern);
+        }
+        "-s" => {
+            let pattern = Regex::new(input_pattern).unwrap();
+            standard_search::grep(&mut contents, pattern);
+        }
+        "-r" => {
+            recursive_search::grep_recursive(&mut contents, input_pattern);
+        }
+        _ => {
+            println!("Invalid Input");
+        }
+    }
 }
 
-fn read_contents(filename: &str,contents : &mut String){
+fn read_contents(filename: &str, contents: &mut String) {
     fs::read_to_string(filename)
         .expect("Something went wrong reading the file")
         .lines()
@@ -33,38 +71,38 @@ fn read_contents(filename: &str,contents : &mut String){
             contents.push_str("\n");
         });
 }
+fn get_files_in_directory(path: &str) -> io::Result<Vec<String>> {
+    // Get a list of all entries in the folder
+    println!("Path: {}", path);
+    let entries = fs::read_dir(path)?;
 
-fn grep(contents : &mut String,pattern: Regex){
-    let mut found = false;
-    for (line_number,line) in contents.lines().enumerate(){
-            if pattern.is_match(line){
-                println!("{}: {}",line_number+1,line);
-                found = true;
-            } 
-    }
-    if !found {
-        println!("Pattern Not Found");
-    }
-    if contents.is_empty(){
-        println!("File is empty ");
-    }
+    // Extract the filenames from the directory entries and store them in a vector
+    let file_names: Vec<String> = entries
+        .filter_map(|entry| {
+            let path = entry.ok()?.path();
+            if path.is_file() {
+                path.file_name()?.to_str().map(|s| s.to_owned())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    Ok(file_names)
 }
 
-fn grep_explicit(content : &mut String,pattern :&str){
-    let mut found = false;
-    for (line_number,line) in content.lines().enumerate(){
-        if line ==pattern{
-            println!("{}: {}",line_number+1,line);
-            found = true;
+
+fn verify_path(path: &str) {
+    if let Ok(metadata) = fs::metadata(path) {
+        if metadata.is_dir() {
+            if fs::read_dir(path).count() == 0 {
+                println!("Path is empty");
+            }
+        } else {
+            println!("Path is not a directory");
         }
+    } else {
+        println!("Path does not exist");
     }
-
-    if !found {
-        println!("Pattern Not Found Explicitly");
-        println!("{}",pattern);
-    }
-    if content.is_empty(){
-        println!("File is empty ");
-    }
-
 }
+

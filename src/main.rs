@@ -2,13 +2,19 @@ use regex::Regex;
 use std::env;
 use std::fs;
 use std::io;
-use std::fs::metadata;
+use std::path::Path;
 mod explicit_pattern;
 mod insensitive_explicit_pattern;
 mod insensitive_pattern;
 mod recursive_search;
 mod standard_search;
 mod usage;
+
+#[derive(PartialEq)]
+enum PathType {
+    File,
+    Folder,
+}
 fn main() {
     let mut contents = String::new();
     let args: Vec<String> = env::args().collect();
@@ -19,18 +25,21 @@ fn main() {
         } else {
             println!("Invalid Input");
         }
-        //end the program
         return;
     }
     let path = &args[2];
+    let path_type = is_file_or_folder(&path);
+    let path_as_path = std::path::Path::new(path);
+    if path_type == PathType::File {
+        read_contents_in_a_file(&path, &mut contents,);
+    } else {
+        let files = get_files_in_directory(&path_as_path).unwrap();
+        for file in files {
+            read_contents(&file, &mut contents, &path_as_path);
+        }
+    }
     let input_pattern = &args[3];
     let pattern_type: &str = &args[1];
-    verify_path(path);
-    println!("Path : {}", path);
-    let file_names = get_files_in_directory(path).unwrap();
-    for file in file_names{
-        read_contents(&file, &mut contents);
-    }
 
     // matching the arugements with respective functions
     /*
@@ -62,7 +71,9 @@ fn main() {
     }
 }
 
-fn read_contents(filename: &str, contents: &mut String) {
+fn read_contents(filename: &str, contents: &mut String, directory: &Path) {
+    let filename = directory.join(filename);
+    //changing program to that directory
     fs::read_to_string(filename)
         .expect("Something went wrong reading the file")
         .lines()
@@ -71,12 +82,19 @@ fn read_contents(filename: &str, contents: &mut String) {
             contents.push_str("\n");
         });
 }
-fn get_files_in_directory(path: &str) -> io::Result<Vec<String>> {
-    // Get a list of all entries in the folder
-    println!("Path: {}", path);
-    let entries = fs::read_dir(path)?;
 
-    // Extract the filenames from the directory entries and store them in a vector
+fn read_contents_in_a_file(filename:&str,contents:&mut String){
+    fs::read_to_string(filename)
+        .expect("Something went wrong reading the file")
+        .lines()
+        .for_each(|line| {
+            contents.push_str(line);
+            contents.push_str("\n");
+        });
+}
+
+fn get_files_in_directory(path: &Path) -> io::Result<Vec<String>> {
+    let entries = fs::read_dir(path)?;
     let file_names: Vec<String> = entries
         .filter_map(|entry| {
             let path = entry.ok()?.path();
@@ -91,18 +109,12 @@ fn get_files_in_directory(path: &str) -> io::Result<Vec<String>> {
     Ok(file_names)
 }
 
-
-fn verify_path(path: &str) {
-    if let Ok(metadata) = fs::metadata(path) {
-        if metadata.is_dir() {
-            if fs::read_dir(path).count() == 0 {
-                println!("Path is empty");
-            }
-        } else {
-            println!("Path is not a directory");
-        }
-    } else {
-        println!("Path does not exist");
+fn is_file_or_folder(path: &str) -> PathType {
+    let path = Path::new(path);
+    if path.is_file() {
+        return PathType::File;
+    } else if path.is_dir() {
+        return PathType::Folder;
     }
+    panic!("Invalid Path");
 }
-
